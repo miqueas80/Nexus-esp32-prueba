@@ -31,6 +31,9 @@
     #disconnect{width:100%;margin-top:10px;background:transparent;border:1px solid #36536d;color:#bcd3e3}
     .notice{font-size:.92rem;margin-top:15px;color:#c2d6e5;line-height:1.5;min-height:43px}
     .hint{font-size:.89rem;line-height:1.55;color:#a7c0d0;margin-top:18px}
+    .diag{margin-top:12px;padding:13px;border-radius:11px;background:#132b42;border:1px dashed #3b7998;color:#d5eeff;font-size:.9rem;line-height:1.45;overflow-wrap:anywhere}
+    .diag strong{color:#83e9dc}
+    .steps{margin-top:10px;padding-left:20px;color:#bcd5e3;font-size:.88rem;line-height:1.6}
     code{font-size:.83em;background:#122e45;border-radius:4px;padding:.15em .35em;overflow-wrap:anywhere}
     footer{font-size:.75rem;margin-top:30px;color:#7390a7}
     @media(max-width:360px){.buttons{grid-template-columns:1fr}}
@@ -51,6 +54,7 @@
     </div>
     <button id="disconnect" type="button" disabled>Desconectar</button>
     <p id="message" class="notice" role="status">Listo para buscar el dispositivo.</p>
+    <div class="diag" aria-live="polite"><strong>Diagnóstico:</strong> <span id="diag">Comprobando navegador…</span></div>
   </section>
   <p class="hint">Abrí esta página desde <strong>Chrome para Android</strong> mediante <strong>HTTPS</strong>, activá Bluetooth, y desconectá primero nRF Connect si sigue conectado. No hace falta emparejarlo en los ajustes del celular.</p>
   <p class="hint"><strong>Alcance:</strong> esta prueba solamente lee el texto <code>NEXUS-X LISTO</code>. Para encender dispositivos o recibir sensores en tiempo real necesitaremos ampliar el firmware BLE con características de escritura y notificación.</p>
@@ -66,6 +70,7 @@
   let characteristic = null;
   let busy = false;
   const setMessage = (msg) => { $('message').textContent = msg; };
+  const setDiag = (msg) => { $('diag').textContent = msg; };
   function update(connected, label, waiting = false) {
     $('state').textContent = label;
     $('state').className = 'pill' + (connected ? ' online' : waiting ? ' wait' : '');
@@ -78,38 +83,48 @@
     $('value').textContent = 'Sin conexión';
     update(false, 'Desconectado');
     setMessage('Se cortó la conexión. Tocá «Conectar ESP32» para volver a intentar.');
+    setDiag('Bluetooth desconectado. Cerrá nRF Connect y reiniciá la ESP32 con EN antes de volver a buscar.');
   }
   async function readStatus() {
     if (!characteristic) throw new Error('No hay característica de lectura disponible.');
+    setDiag('Leyendo la característica BLE desde la placa…');
     const data = await characteristic.readValue();
     const bytes = new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
     const value = new TextDecoder('utf-8').decode(bytes);
     $('value').textContent = value || '(valor vacío)';
     setMessage(value === 'NEXUS-X LISTO' ? 'Lectura correcta: el celular recibió el estado desde la ESP32.' : 'Dato recibido. Valor diferente del esperado, comprobá el firmware.');
+    setDiag('Lectura Bluetooth completada correctamente.');
   }
   $('connect').addEventListener('click', async () => {
     if (busy) return;
     if (!window.isSecureContext || !navigator.bluetooth) {
       setMessage('Este navegador/contexto no permite Web Bluetooth. Abrí la página en Chrome para Android desde una dirección HTTPS (no desde un archivo descargado).');
+      setDiag('ERROR DE ENTORNO: ' + (!window.isSecureContext ? 'La página no está en un contexto seguro (HTTPS).' : 'El navegador no expone navigator.bluetooth. Usá Chrome para Android y no el navegador interno de otra app.'));
       return;
     }
     busy = true;
     update(false, 'Buscando…', true);
-    setMessage('Elegí NEXUS-ESP32 en la ventana de Bluetooth.');
+    setMessage('Paso 1/4: buscando NEXUS-ESP32. Si no aparece la ventana de selección, revisá los permisos de Bluetooth de Chrome.');
+    setDiag('Botón detectado. Web Bluetooth está disponible. Se solicitó mostrar la lista de dispositivos.');
     try {
       device = await navigator.bluetooth.requestDevice({
         filters: [{ namePrefix: 'NEXUS-ESP32' }],
         optionalServices: [SERVICE_UUID]
       });
+      setMessage('Paso 2/4: dispositivo elegido. Abriendo conexión BLE…');
+      setDiag('Dispositivo: ' + (device.name || 'sin nombre'));
       device.addEventListener('gattserverdisconnected', onDisconnected);
       $('deviceName').textContent = device.name || 'NEXUS-ESP32';
       const server = await device.gatt.connect();
+      setMessage('Paso 3/4: Bluetooth conectado. Buscando servicio NEXUS-X…');
       const service = await server.getPrimaryService(SERVICE_UUID);
       characteristic = await service.getCharacteristic(READ_UUID);
+      setMessage('Paso 4/4: servicio encontrado. Leyendo estado…');
       await readStatus();
     } catch (e) {
       characteristic = null;
-      const message = e && e.name === 'NotFoundError' ? 'No se seleccionó una ESP32. Verificá que esté encendida y que nRF Connect esté desconectado.' : 'No se pudo conectar o leer: ' + (e?.message || String(e));
+      const message = e && e.name === 'NotFoundError' ? 'No se seleccionó una ESP32. Cerrá nRF Connect, pulsá EN en la ESP32 y repetí la búsqueda.' : 'No se pudo conectar o leer: ' + (e?.message || String(e)); 
+      setDiag('ERROR ' + (e?.name || 'desconocido') + ': ' + (e?.message || String(e)));
       setMessage(message);
       $('value').textContent = 'Sin lectura';
       if (device?.gatt?.connected) device.gatt.disconnect();
@@ -130,7 +145,10 @@
     onDisconnected();
   });
   if (!window.isSecureContext || !navigator.bluetooth) {
-    setMessage('Para conectar: publicá index.html en GitHub Pages (HTTPS) y abrilo con Chrome en Android.');
+    setMessage('Esta página no tiene acceso a Web Bluetooth. Abrí el enlace HTTPS en Chrome para Android.');
+    setDiag('Compatibilidad: HTTPS=' + window.isSecureContext + ', Web Bluetooth=' + Boolean(navigator.bluetooth) + '.');
+  } else {
+    setDiag('Navegador compatible y HTTPS activo. Podés tocar Conectar ESP32.');
   }
 })();
 </script>
