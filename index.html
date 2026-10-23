@@ -80,7 +80,7 @@
     <div class="diag" aria-live="polite"><strong>Diagnóstico:</strong> <span id="diag">Comprobando navegador…</span></div>
   </section>
   <p class="hint">Abrí esta página desde <strong>Chrome para Android</strong> mediante <strong>HTTPS</strong>, activá Bluetooth, y desconectá primero nRF Connect si sigue conectado. No hace falta emparejarlo en los ajustes del celular.</p>
-  <p class="hint"><strong>Alcance:</strong> esta prueba solamente lee el texto <code>NEXUS-X LISTO</code>. Los botones de control requieren <strong>firmware v2</strong>. Con el firmware anterior (v1), la lectura seguirá funcionando pero los comandos quedarán deshabilitados.</p>
+  <p class="hint"><strong>Alcance:</strong> este piloto envía comandos de demostración y recibe respuestas reales por Bluetooth, pero no controla pines físicos ni sensores. Los botones requieren <strong>firmware v2</strong>; con la versión anterior (v1), solamente estará disponible la lectura.</p>
   <p class="hint">¿Todavía tenés la versión anterior? <a href="https://github.com/miqueas80/Nexus-esp32-prueba/blob/main/firmware/NEXUS_ESP32_Bridge_V2/NEXUS_ESP32_Bridge_V2.ino">Abrí el firmware v2 para Arduino IDE</a>. Primero cargalo por USB y reiniciá la ESP32. El control aquí es únicamente lógico.</p>
   <footer>Laboratorio de prueba · No modifica NEXUS-X en producción · Bluetooth local · Ningún GPIO se acciona</footer>
 </main>
