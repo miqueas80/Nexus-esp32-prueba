@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#07182b">
   <meta name="description" content="Prueba de lectura Bluetooth BLE NEXUS-X / ESP32">
-  <title>NEXUS-X | Prueba ESP32 BLE</title>
+  <title>NEXUS-X | Hardware Bridge BLE v2</title>
   <style>
     :root{color-scheme:dark;font-family:system-ui,-apple-system,'Segoe UI',sans-serif}
     *{box-sizing:border-box}
@@ -34,6 +34,18 @@
     .diag{margin-top:12px;padding:13px;border-radius:11px;background:#132b42;border:1px dashed #3b7998;color:#d5eeff;font-size:.9rem;line-height:1.45;overflow-wrap:anywhere}
     .diag strong{color:#83e9dc}
     .steps{margin-top:10px;padding-left:20px;color:#bcd5e3;font-size:.88rem;line-height:1.6}
+    .controls{margin-top:20px;padding-top:19px;border-top:1px solid #2b5874}
+    .controls h2{font-size:1.04rem;margin:0 0 8px}
+    .controls .subtitle{color:#abc7d8;font-size:.9rem;margin:0 0 13px;line-height:1.5}
+    .commandGrid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+    .commandGrid button{background:#17435e;color:#e8fbff;border:1px solid #397d9a}
+    .commandGrid button.primary{background:#42d4ba;color:#072b31;border:0}
+    .commandGrid button:focus-visible,button:focus-visible{outline:3px solid #a6fbed;outline-offset:3px}
+    .signal{display:flex;align-items:center;gap:9px;font-weight:700;margin:13px 0;color:#e0f3fa}
+    .signal:before{content:'';display:inline-block;width:12px;height:12px;border-radius:50%;background:#7b8793}
+    .signal.on:before{background:#56ffbd;box-shadow:0 0 12px #50ffbb}
+    .signal.off:before{background:#8ca1b3}
+    a{color:#9ce4ef}
     code{font-size:.83em;background:#122e45;border-radius:4px;padding:.15em .35em;overflow-wrap:anywhere}
     footer{font-size:.75rem;margin-top:30px;color:#7390a7}
     @media(max-width:360px){.buttons{grid-template-columns:1fr}}
@@ -42,8 +54,8 @@
 <body>
 <main>
   <div class="eyebrow">NEXUS-X / Hardware Bridge</div>
-  <h1>ESP32 · Enlace Bluetooth</h1>
-  <p class="lead">Prueba de lectura inalámbrica usando exactamente los UUID del firmware que acabamos de verificar con nRF Connect.</p>
+  <h1>ESP32 · Control bidireccional</h1>
+  <p class="lead">Ahora podemos enviar órdenes a la ESP32 y recibir confirmaciones. El interruptor es virtual: no acciona ningún pin ni conecta sensores.</p>
   <section class="panel" aria-label="Panel ESP32">
     <div class="top"><span class="label">Dispositivo</span><span class="pill" id="state" role="status">Desconectado</span></div>
     <div class="name" id="deviceName">NEXUS-ESP32</div>
@@ -53,103 +65,209 @@
       <button id="read" type="button" disabled>Leer estado</button>
     </div>
     <button id="disconnect" type="button" disabled>Desconectar</button>
+    <section class="controls" aria-label="Comandos de demostración">
+      <h2>Comandos a la ESP32</h2>
+      <p class="subtitle" id="firmware">Conectá la placa para detectar si tiene el firmware bidireccional v2.</p>
+      <div class="signal" id="demoState">Interruptor virtual: sin datos</div>
+      <div class="commandGrid">
+        <button class="primary" id="demoOn" disabled type="button">Activar demo</button>
+        <button id="demoOff" disabled type="button">Desactivar demo</button>
+        <button id="ping" disabled type="button">Enviar PING</button>
+        <button id="status" disabled type="button">Consultar estado</button>
+      </div>
+    </section>
     <p id="message" class="notice" role="status">Listo para buscar el dispositivo.</p>
     <div class="diag" aria-live="polite"><strong>Diagnóstico:</strong> <span id="diag">Comprobando navegador…</span></div>
   </section>
   <p class="hint">Abrí esta página desde <strong>Chrome para Android</strong> mediante <strong>HTTPS</strong>, activá Bluetooth, y desconectá primero nRF Connect si sigue conectado. No hace falta emparejarlo en los ajustes del celular.</p>
-  <p class="hint"><strong>Alcance:</strong> esta prueba solamente lee el texto <code>NEXUS-X LISTO</code>. Para encender dispositivos o recibir sensores en tiempo real necesitaremos ampliar el firmware BLE con características de escritura y notificación.</p>
-  <footer>Prueba independiente · No modifica NEXUS-X en producción · Sin Internet para el enlace ESP32 ↔ celular</footer>
+  <p class="hint"><strong>Alcance:</strong> esta prueba solamente lee el texto <code>NEXUS-X LISTO</code>. Los botones de control requieren <strong>firmware v2</strong>. Con el firmware anterior (v1), la lectura seguirá funcionando pero los comandos quedarán deshabilitados.</p>
+  <p class="hint">¿Todavía tenés la versión anterior? <a href="https://github.com/miqueas80/Nexus-esp32-prueba/blob/main/firmware/NEXUS_ESP32_Bridge_V2/NEXUS_ESP32_Bridge_V2.ino">Abrí el firmware v2 para Arduino IDE</a>. Primero cargalo por USB y reiniciá la ESP32. El control aquí es únicamente lógico.</p>
+  <footer>Laboratorio de prueba · No modifica NEXUS-X en producción · Bluetooth local · Ningún GPIO se acciona</footer>
 </main>
 <script>
 (() => {
   'use strict';
+
+  // Servicio de la prueba v1: se conserva para compatibilidad.
   const SERVICE_UUID = '4fafc201-1fb5-459e-8fcc-c5c9c331914b';
   const READ_UUID = 'beb5483e-36e1-4688-b7f5-ea07361b26a8';
+  // El firmware v2 agrega esta característica de escritura.
+  const COMMAND_UUID = '3a1e2bb8-531e-4d55-bc0c-b83b650e9069';
   const $ = (id) => document.getElementById(id);
+  const commandButtons = ['demoOn','demoOff','ping','status'];
   let device = null;
-  let characteristic = null;
-  let busy = false;
-  const setMessage = (msg) => { $('message').textContent = msg; };
-  const setDiag = (msg) => { $('diag').textContent = msg; };
-  function update(connected, label, waiting = false) {
-    $('state').textContent = label;
-    $('state').className = 'pill' + (connected ? ' online' : waiting ? ' wait' : '');
-    $('connect').disabled = busy || connected;
-    $('read').disabled = busy || !connected;
-    $('disconnect').disabled = busy || !connected;
+  let statusChar = null;
+  let commandChar = null;
+  let isBusy = false;
+  let notificationsActive = false;
+
+  const setMessage = (value) => { $('message').textContent = value; };
+  const setDiag = (value) => { $('diag').textContent = value; };
+  const connected = () => Boolean(statusChar && device?.gatt?.connected);
+
+  function render() {
+    const online = connected();
+    $('state').textContent = online ? 'Conectado' : isBusy ? 'Conectando…' : 'Desconectado';
+    $('state').className = 'pill' + (online ? ' online' : isBusy ? ' wait' : '');
+    $('connect').disabled = isBusy || online;
+    $('read').disabled = isBusy || !online;
+    $('disconnect').disabled = isBusy || !online;
+    for (const id of commandButtons) $(id).disabled = isBusy || !online || !commandChar;
   }
-  function onDisconnected() {
-    characteristic = null;
-    $('value').textContent = 'Sin conexión';
-    update(false, 'Desconectado');
-    setMessage('Se cortó la conexión. Tocá «Conectar ESP32» para volver a intentar.');
-    setDiag('Bluetooth desconectado. Cerrá nRF Connect y reiniciá la ESP32 con EN antes de volver a buscar.');
-  }
-  async function readStatus() {
-    if (!characteristic) throw new Error('No hay característica de lectura disponible.');
-    setDiag('Leyendo la característica BLE desde la placa…');
-    const data = await characteristic.readValue();
-    const bytes = new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
-    const value = new TextDecoder('utf-8').decode(bytes);
+
+  function showValue(value) {
     $('value').textContent = value || '(valor vacío)';
-    setMessage(value === 'NEXUS-X LISTO' ? 'Lectura correcta: el celular recibió el estado desde la ESP32.' : 'Dato recibido. Valor diferente del esperado, comprobá el firmware.');
-    setDiag('Lectura Bluetooth completada correctamente.');
+    const state = $('demoState');
+    if (value === 'ACK:DEMO_ON' || value === 'STATE:ON') {
+      state.className = 'signal on';
+      state.textContent = 'Interruptor virtual: ACTIVADO';
+    } else if (value === 'ACK:DEMO_OFF' || value === 'STATE:OFF') {
+      state.className = 'signal off';
+      state.textContent = 'Interruptor virtual: DESACTIVADO';
+    } else if (value === 'NEXUS-X LISTO') {
+      state.className = 'signal';
+      state.textContent = 'Interruptor virtual: esperando consulta';
+    }
+    if (value === 'PONG') setMessage('Respuesta recibida: la ESP32 contestó al PING.');
+    else if (value?.startsWith('ACK:')) setMessage('Orden confirmada por la ESP32 (simulación segura).');
+    else if (value?.startsWith('STATE:')) setMessage('Estado leído directamente desde la ESP32.');
+    else if (value === 'NEXUS-X LISTO') setMessage('Conexión de lectura confirmada.');
+    else setMessage('Respuesta recibida: ' + value);
   }
+
+  function parseValue(data) {
+    return new TextDecoder('utf-8').decode(new Uint8Array(data.buffer, data.byteOffset, data.byteLength));
+  }
+
+  function notification(event) {
+    showValue(parseValue(event.target.value));
+    setDiag('Notificación Bluetooth recibida desde la ESP32.');
+  }
+
+  function disconnected() {
+    statusChar = null;
+    commandChar = null;
+    notificationsActive = false;
+    $('value').textContent = 'Sin conexión';
+    $('demoState').className = 'signal';
+    $('demoState').textContent = 'Interruptor virtual: sin datos';
+    $('firmware').textContent = 'Conectá la ESP32 para comprobar el firmware.';
+    setMessage('Desconectado. Volvé a conectar cuando quieras.');
+    setDiag('Conexión cerrada. El firmware v2 vuelve a anunciarse automáticamente.');
+    render();
+  }
+
+  async function readValue() {
+    if (!statusChar) throw new Error('No hay característica de lectura activa');
+    const data = await statusChar.readValue();
+    showValue(parseValue(data));
+    setDiag('Lectura BLE completada.');
+  }
+
   $('connect').addEventListener('click', async () => {
-    if (busy) return;
+    if (isBusy) return;
     if (!window.isSecureContext || !navigator.bluetooth) {
-      setMessage('Este navegador/contexto no permite Web Bluetooth. Abrí la página en Chrome para Android desde una dirección HTTPS (no desde un archivo descargado).');
-      setDiag('ERROR DE ENTORNO: ' + (!window.isSecureContext ? 'La página no está en un contexto seguro (HTTPS).' : 'El navegador no expone navigator.bluetooth. Usá Chrome para Android y no el navegador interno de otra app.'));
+      setMessage('Web Bluetooth no está disponible. Abrí GitHub Pages desde Chrome en Android (HTTPS).');
+      setDiag('HTTPS=' + window.isSecureContext + ', Web Bluetooth=' + Boolean(navigator.bluetooth));
       return;
     }
-    busy = true;
-    update(false, 'Buscando…', true);
-    setMessage('Paso 1/4: buscando NEXUS-ESP32. Si no aparece la ventana de selección, revisá los permisos de Bluetooth de Chrome.');
-    setDiag('Botón detectado. Web Bluetooth está disponible. Se solicitó mostrar la lista de dispositivos.');
+    isBusy = true;
+    render();
+    setMessage('Buscando NEXUS-ESP32… Elegí tu placa en la ventana de Chrome.');
+    setDiag('Solicitud de dispositivo iniciada.');
     try {
       device = await navigator.bluetooth.requestDevice({
-        filters: [{ namePrefix: 'NEXUS-ESP32' }],
+        filters: [{namePrefix: 'NEXUS-ESP32'}],
         optionalServices: [SERVICE_UUID]
       });
-      setMessage('Paso 2/4: dispositivo elegido. Abriendo conexión BLE…');
-      setDiag('Dispositivo: ' + (device.name || 'sin nombre'));
-      device.addEventListener('gattserverdisconnected', onDisconnected);
+      device.addEventListener('gattserverdisconnected', disconnected);
       $('deviceName').textContent = device.name || 'NEXUS-ESP32';
+      setMessage('Dispositivo elegido. Conectando…');
       const server = await device.gatt.connect();
-      setMessage('Paso 3/4: Bluetooth conectado. Buscando servicio NEXUS-X…');
       const service = await server.getPrimaryService(SERVICE_UUID);
-      characteristic = await service.getCharacteristic(READ_UUID);
-      setMessage('Paso 4/4: servicio encontrado. Leyendo estado…');
-      await readStatus();
-    } catch (e) {
-      characteristic = null;
-      const message = e && e.name === 'NotFoundError' ? 'No se seleccionó una ESP32. Cerrá nRF Connect, pulsá EN en la ESP32 y repetí la búsqueda.' : 'No se pudo conectar o leer: ' + (e?.message || String(e)); 
-      setDiag('ERROR ' + (e?.name || 'desconocido') + ': ' + (e?.message || String(e)));
-      setMessage(message);
-      $('value').textContent = 'Sin lectura';
+      statusChar = await service.getCharacteristic(READ_UUID);
+      try {
+        commandChar = await service.getCharacteristic(COMMAND_UUID);
+        $('firmware').textContent = 'Firmware v2 encontrado: podés enviar comandos de demostración.';
+      } catch (error) {
+        commandChar = null;
+        $('firmware').textContent = 'Firmware anterior detectado (solo lectura). Cargá la versión v2 desde Arduino IDE para activar estos botones.';
+      }
+      try {
+        statusChar.addEventListener('characteristicvaluechanged', notification);
+        await statusChar.startNotifications();
+        notificationsActive = true;
+      } catch (error) {
+        notificationsActive = false;
+        setDiag('Notificaciones no disponibles; lectura manual habilitada.');
+      }
+      await readValue();
+      setMessage(commandChar ? 'ESP32 conectada. Listo para enviar PING o controlar el interruptor virtual.' : 'ESP32 conectada en modo lectura. Actualizá el firmware para enviar comandos.');
+    } catch (error) {
+      setMessage(error?.name === 'NotFoundError' ?
+        'No se seleccionó una placa. Cerrá nRF Connect y, si no aparece, pulsá EN en la ESP32.' :
+        'Error de Bluetooth: ' + (error?.message || String(error)));
+      setDiag('ERROR ' + (error?.name || 'desconocido') + ': ' + (error?.message || String(error)));
+      statusChar = null;
+      commandChar = null;
       if (device?.gatt?.connected) device.gatt.disconnect();
     } finally {
-      busy = false;
-      update(Boolean(characteristic && device?.gatt?.connected), characteristic ? 'Conectado' : 'Desconectado');
+      isBusy = false;
+      render();
     }
   });
+
   $('read').addEventListener('click', async () => {
-    if (busy || !characteristic) return;
-    busy = true;
-    update(true, 'Leyendo…', true);
-    try { await readStatus(); } catch (e) { setMessage('Fallo al leer: ' + (e?.message || String(e))); }
-    finally { busy = false; update(Boolean(characteristic && device?.gatt?.connected), device?.gatt?.connected ? 'Conectado' : 'Desconectado'); }
+    if (!connected() || isBusy) return;
+    isBusy = true;
+    render();
+    try { await readValue(); }
+    catch (error) { setMessage('No se pudo leer: ' + (error?.message || String(error))); }
+    finally { isBusy = false; render(); }
   });
-  $('disconnect').addEventListener('click', () => {
-    device?.gatt?.disconnect();
-    onDisconnected();
-  });
-  if (!window.isSecureContext || !navigator.bluetooth) {
-    setMessage('Esta página no tiene acceso a Web Bluetooth. Abrí el enlace HTTPS en Chrome para Android.');
-    setDiag('Compatibilidad: HTTPS=' + window.isSecureContext + ', Web Bluetooth=' + Boolean(navigator.bluetooth) + '.');
-  } else {
-    setDiag('Navegador compatible y HTTPS activo. Podés tocar Conectar ESP32.');
+
+  async function sendCommand(command) {
+    if (!connected() || !commandChar || isBusy) return;
+    isBusy = true;
+    render();
+    setMessage('Enviando ' + command + '…');
+    try {
+      const payload = new TextEncoder().encode(command);
+      if (commandChar.writeValueWithResponse) {
+        await commandChar.writeValueWithResponse(payload);
+      } else {
+        await commandChar.writeValue(payload);
+      }
+      // La confirmación está en la characteristic READ/NOTIFY. 
+      // Pequeña pausa para permitir que la cola BLE procese el comando.
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      await readValue();
+      setDiag('Comando ' + command + ' escrito en la ESP32; respuesta consultada.' +
+        (notificationsActive ? ' Notificaciones activas.' : ' Notificaciones no disponibles.'));
+    } catch (error) {
+      setMessage('Error enviando ' + command + ': ' + (error?.message || String(error)));
+      setDiag('Revisá la conexión, firmware v2 y permisos Bluetooth.');
+    } finally {
+      isBusy = false;
+      render();
+    }
   }
+
+  $('demoOn').addEventListener('click', () => sendCommand('DEMO_ON'));
+  $('demoOff').addEventListener('click', () => sendCommand('DEMO_OFF'));
+  $('ping').addEventListener('click', () => sendCommand('PING'));
+  $('status').addEventListener('click', () => sendCommand('STATUS'));
+  $('disconnect').addEventListener('click', () => {
+    if (device?.gatt?.connected) device.gatt.disconnect();
+    disconnected();
+  });
+
+  if (!window.isSecureContext || !navigator.bluetooth) {
+    setDiag('El navegador no permite Web Bluetooth; usá Chrome para Android desde HTTPS.');
+  } else {
+    setDiag('Web Bluetooth disponible. Presioná Conectar ESP32.');
+  }
+  render();
 })();
 </script>
 </body>
