@@ -144,7 +144,7 @@ class CommandCallbacks : public BLECharacteristicCallbacks {
     String value = characteristic->getValue();
     value.trim();
     value.toUpperCase();
-    if (value.isEmpty() ||
+    if (value.length() == 0 ||
         value.length() >= sizeof(CommandMessage::text)) {
       Serial.println("[BLE] Comando invalido");
       return;
@@ -205,8 +205,14 @@ void executeCommand(const char *command) {
 
   // Control fisico EXCLUSIVO del LED con resistor.
   else if (strcmp(command, "LED_ON") == 0) {
-    setLed(true);
-    publishStatus("ACK:LED_ON");
+    // Ignorar orden pendiente si se perdió la conexión BLE.
+    if (!deviceConnected) {
+      setLed(false);
+      publishStatus("ERR:DISCONNECTED");
+    } else {
+      setLed(true);
+      publishStatus("ACK:LED_ON");
+    }
   } else if (strcmp(command, "LED_OFF") == 0) {
     setLed(false);
     publishStatus("ACK:LED_OFF");
