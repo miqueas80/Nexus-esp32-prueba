@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#07182b">
   <meta name="description" content="Prueba de lectura Bluetooth BLE NEXUS-X / ESP32">
-  <title>NEXUS-X | Hardware Bridge BLE v2</title>
+  <title>NEXUS-X | Hardware Bridge BLE v3 · Ambiente</title>
   <style>
     :root{color-scheme:dark;font-family:system-ui,-apple-system,'Segoe UI',sans-serif}
     *{box-sizing:border-box}
@@ -48,6 +48,15 @@
     a{color:#9ce4ef}
     code{font-size:.83em;background:#122e45;border-radius:4px;padding:.15em .35em;overflow-wrap:anywhere}
     footer{font-size:.75rem;margin-top:30px;color:#7390a7}
+
+    .environment{margin-top:20px;padding-top:19px;border-top:1px solid #2b5874}
+    .environment h2{font-size:1.05rem;margin:0 0 8px}
+    .envGrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:14px 0}
+    .envCard{border:1px solid #2f5875;border-radius:14px;background:#091a2c;text-align:center;padding:12px 5px;min-width:0}
+    .envNumber{font-size:clamp(1.05rem,4.7vw,1.6rem);font-weight:750;font-variant-numeric:tabular-nums;margin:8px 0;overflow-wrap:anywhere}
+    .envUnit{color:#a8c7da;font-size:.75rem}
+    #environmentRefresh{background:#42d4ba;color:#072b31;width:100%}
+    #sensorInfo,#lastUpdated{color:#acc9db;font-size:.86rem;line-height:1.4}
     @media(max-width:360px){.buttons{grid-template-columns:1fr}}
   </style>
 </head>
@@ -55,7 +64,7 @@
 <main>
   <div class="eyebrow">NEXUS-X / Hardware Bridge</div>
   <h1>ESP32 · Control bidireccional</h1>
-  <p class="lead">Ahora podemos enviar órdenes a la ESP32 y recibir confirmaciones. El interruptor es virtual: no acciona ningún pin ni conecta sensores.</p>
+  <p class="lead">Leé temperatura, presión y humedad de NEXUS-ESP32 por Bluetooth. Los controles de demostración siguen siendo virtuales.</p>
   <section class="panel" aria-label="Panel ESP32">
     <div class="top"><span class="label">Dispositivo</span><span class="pill" id="state" role="status">Desconectado</span></div>
     <div class="name" id="deviceName">NEXUS-ESP32</div>
@@ -65,6 +74,17 @@
       <button id="read" type="button" disabled>Leer estado</button>
     </div>
     <button id="disconnect" type="button" disabled>Desconectar</button>
+    <section class="environment" aria-label="Mediciones ambientales">
+      <h2>🌡️ Mediciones ambientales</h2>
+      <p id="sensorInfo" role="status">Conectá la ESP32 para consultar el sensor.</p>
+      <div class="envGrid" aria-live="polite">
+        <div class="envCard"><span aria-hidden="true">🌡️</span><div id="temperature" class="envNumber">—</div><div class="envUnit">Temperatura · °C</div></div>
+        <div class="envCard"><span aria-hidden="true">🌤️</span><div id="pressure" class="envNumber">—</div><div class="envUnit">Presión · hPa</div></div>
+        <div class="envCard"><span aria-hidden="true">💧</span><div id="humidity" class="envNumber">—</div><div class="envUnit">Humedad · %</div></div>
+      </div>
+      <button id="environmentRefresh" type="button" disabled>Actualizar mediciones</button>
+      <p id="lastUpdated">Todavía no hay mediciones.</p>
+    </section>
     <section class="controls" aria-label="Comandos de demostración">
       <h2>Comandos a la ESP32</h2>
       <p class="subtitle" id="firmware">Conectá la placa para detectar si tiene el firmware bidireccional v2.</p>
@@ -80,7 +100,7 @@
     <div class="diag" aria-live="polite"><strong>Diagnóstico:</strong> <span id="diag">Comprobando navegador…</span></div>
   </section>
   <p class="hint">Abrí esta página desde <strong>Chrome para Android</strong> mediante <strong>HTTPS</strong>, activá Bluetooth, y desconectá primero nRF Connect si sigue conectado. No hace falta emparejarlo en los ajustes del celular.</p>
-  <p class="hint"><strong>Alcance:</strong> este piloto envía comandos de demostración y recibe respuestas reales por Bluetooth, pero no controla pines físicos ni sensores. Los botones requieren <strong>firmware v2</strong>; con la versión anterior (v1), solamente estará disponible la lectura.</p>
+  <p class="hint"><strong>Alcance:</strong> este piloto lee sensores BMP280/BME280 con firmware v3 y conserva comandos de demostración v2. No acciona salidas físicas. Se necesita conexión Bluetooth local y alimentación USB.</p>
   <p class="hint">¿Todavía tenés la versión anterior? <a href="https://github.com/miqueas80/Nexus-esp32-prueba/blob/main/firmware/NEXUS_ESP32_Bridge_V2/NEXUS_ESP32_Bridge_V2.ino">Abrí el firmware v2 para Arduino IDE</a>. Primero cargalo por USB y reiniciá la ESP32. El control aquí es únicamente lógico.</p>
   <footer>Laboratorio de prueba · No modifica NEXUS-X en producción · Bluetooth local · Ningún GPIO se acciona</footer>
 </main>
@@ -100,6 +120,8 @@
   let commandChar = null;
   let isBusy = false;
   let notificationsActive = false;
+  let telemetrySupported = null;
+  let sensorDetected = false;
 
   const setMessage = (value) => { $('message').textContent = value; };
   const setDiag = (value) => { $('diag').textContent = value; };
@@ -113,10 +135,49 @@
     $('read').disabled = isBusy || !online;
     $('disconnect').disabled = isBusy || !online;
     for (const id of commandButtons) $(id).disabled = isBusy || !online || !commandChar;
+    $('environmentRefresh').disabled = isBusy || !online || !commandChar || telemetrySupported === false;
+  }
+
+  function resetEnvironment() {
+    telemetrySupported = null;
+    sensorDetected = false;
+    $('sensorInfo').textContent = 'Conectá la ESP32 para consultar el sensor.';
+    for (const id of ['temperature','pressure','humidity']) $(id).textContent = '—';
+    $('lastUpdated').textContent = 'Todavía no hay mediciones.';
+  }
+
+  function updateTelemetry(value) {
+    const sensorMatch = /^SENSOR:(BME280|BMP280)$/.exec(value);
+    if (sensorMatch) {
+      telemetrySupported = true;
+      sensorDetected = true;
+      $('sensorInfo').textContent = sensorMatch[1] + ' detectado y conectado.';
+      if (sensorMatch[1] === 'BMP280') $('humidity').textContent = 'N/D';
+      return;
+    }
+    if (value === 'SENSOR:NO_DETECTADO' || value === 'ERR:NO_SENSOR') {
+      telemetrySupported = true;
+      sensorDetected = false;
+      $('sensorInfo').textContent = 'El ESP32 no detecta el sensor. Revisá las conexiones.';
+      for (const id of ['temperature','pressure','humidity']) $(id).textContent = '—';
+      return;
+    }
+    if (value === 'ERR:NO_HUM') {
+      $('humidity').textContent = 'N/D';
+      return;
+    }
+    const match = /^(TEMP|PRES|HUM):(-?\d+(?:\.\d+)?)$/.exec(value);
+    if (!match) return;
+    const num = Number(match[2]);
+    if (!Number.isFinite(num)) return;
+    const target = {TEMP:'temperature',PRES:'pressure',HUM:'humidity'}[match[1]];
+    $(target).textContent = num.toLocaleString('es-AR',{minimumFractionDigits:1,maximumFractionDigits:1});
+    $('lastUpdated').textContent = 'Última lectura: ' + new Date().toLocaleTimeString('es-AR');
   }
 
   function showValue(value) {
     $('value').textContent = value || '(valor vacío)';
+    updateTelemetry(value);
     const state = $('demoState');
     if (value === 'ACK:DEMO_ON' || value === 'STATE:ON') {
       state.className = 'signal on';
@@ -152,6 +213,7 @@
     $('demoState').className = 'signal';
     $('demoState').textContent = 'Interruptor virtual: sin datos';
     $('firmware').textContent = 'Conectá la ESP32 para comprobar el firmware.';
+    resetEnvironment();
     setMessage('Desconectado. Volvé a conectar cuando quieras.');
     setDiag('Conexión cerrada. El firmware v2 vuelve a anunciarse automáticamente.');
     render();
@@ -160,8 +222,58 @@
   async function readValue() {
     if (!statusChar) throw new Error('No hay característica de lectura activa');
     const data = await statusChar.readValue();
-    showValue(parseValue(data));
+    const value = parseValue(data);
+    showValue(value);
     setDiag('Lectura BLE completada.');
+    return value;
+  }
+
+  async function issueCommand(command) {
+    if (!commandChar) throw new Error('El firmware no admite comandos.');
+    const payload = new TextEncoder().encode(command);
+    if (commandChar.writeValueWithResponse)
+      await commandChar.writeValueWithResponse(payload);
+    else
+      await commandChar.writeValue(payload);
+    await new Promise(resolve => setTimeout(resolve, 300));
+    return readValue();
+  }
+
+  async function queryEnvironment() {
+    const sensorResponse = await issueCommand('SENSOR');
+    if (sensorResponse === 'ERR:UNKNOWN_COMMAND') {
+      telemetrySupported = false;
+      sensorDetected = false;
+      $('sensorInfo').textContent = 'Firmware v2: para mediciones necesitás v3.';
+      $('firmware').textContent = 'Firmware v2 detectado; controles de demostración disponibles.';
+      return;
+    }
+    if (!/^SENSOR:(BMP280|BME280)$/.test(sensorResponse)) {
+      telemetrySupported = true;
+      sensorDetected = false;
+      $('sensorInfo').textContent = 'Sensor no detectado. Revisá cables y soldaduras.';
+      return;
+    }
+    $('firmware').textContent = 'Firmware v3: controles y mediciones disponibles.';
+    await issueCommand('TEMP');
+    await issueCommand('PRESS');
+    if (sensorResponse === 'SENSOR:BME280') await issueCommand('HUM');
+    setDiag('Mediciones leídas desde NEXUS-ESP32 por Bluetooth.');
+  }
+
+  async function refreshEnvironment() {
+    if (!connected() || !commandChar || isBusy || telemetrySupported === false) return;
+    isBusy = true;
+    render();
+    try {
+      await queryEnvironment();
+      if (sensorDetected) setMessage('Mediciones del sensor actualizadas.');
+    } catch (error) {
+      setMessage('Error leyendo ambiente: ' + (error?.message || String(error)));
+    } finally {
+      isBusy = false;
+      render();
+    }
   }
 
   $('connect').addEventListener('click', async () => {
@@ -188,7 +300,7 @@
       statusChar = await service.getCharacteristic(READ_UUID);
       try {
         commandChar = await service.getCharacteristic(COMMAND_UUID);
-        $('firmware').textContent = 'Firmware v2 encontrado: podés enviar comandos de demostración.';
+        $('firmware').textContent = 'Firmware bidireccional detectado. Comprobando sensor…';
       } catch (error) {
         commandChar = null;
         $('firmware').textContent = 'Firmware anterior detectado (solo lectura). Cargá la versión v2 desde Arduino IDE para activar estos botones.';
@@ -202,7 +314,8 @@
         setDiag('Notificaciones no disponibles; lectura manual habilitada.');
       }
       await readValue();
-      setMessage(commandChar ? 'ESP32 conectada. Listo para enviar PING o controlar el interruptor virtual.' : 'ESP32 conectada en modo lectura. Actualizá el firmware para enviar comandos.');
+      if (commandChar) await queryEnvironment();
+      setMessage(commandChar ? 'ESP32 conectada. Controles disponibles.' : 'ESP32 conectada en modo lectura. Actualizá firmware para enviar comandos.');
     } catch (error) {
       setMessage(error?.name === 'NotFoundError' ?
         'No se seleccionó una placa. Cerrá nRF Connect y, si no aparece, pulsá EN en la ESP32.' :
@@ -232,21 +345,11 @@
     render();
     setMessage('Enviando ' + command + '…');
     try {
-      const payload = new TextEncoder().encode(command);
-      if (commandChar.writeValueWithResponse) {
-        await commandChar.writeValueWithResponse(payload);
-      } else {
-        await commandChar.writeValue(payload);
-      }
-      // La confirmación está en la characteristic READ/NOTIFY. 
-      // Pequeña pausa para permitir que la cola BLE procese el comando.
-      await new Promise((resolve) => setTimeout(resolve, 300));
-      await readValue();
-      setDiag('Comando ' + command + ' escrito en la ESP32; respuesta consultada.' +
-        (notificationsActive ? ' Notificaciones activas.' : ' Notificaciones no disponibles.'));
+      await issueCommand(command);
+      setDiag('Comando ' + command + ' enviado y respuesta consultada.');
     } catch (error) {
       setMessage('Error enviando ' + command + ': ' + (error?.message || String(error)));
-      setDiag('Revisá la conexión, firmware v2 y permisos Bluetooth.');
+      setDiag('Revisá la conexión BLE y los permisos Bluetooth.');
     } finally {
       isBusy = false;
       render();
@@ -257,6 +360,11 @@
   $('demoOff').addEventListener('click', () => sendCommand('DEMO_OFF'));
   $('ping').addEventListener('click', () => sendCommand('PING'));
   $('status').addEventListener('click', () => sendCommand('STATUS'));
+  $('environmentRefresh').addEventListener('click', refreshEnvironment);
+  setInterval(() => {
+    if (!document.hidden && connected() && sensorDetected && !isBusy)
+      refreshEnvironment();
+  }, 15000);
   $('disconnect').addEventListener('click', () => {
     if (device?.gatt?.connected) device.gatt.disconnect();
     disconnected();
