@@ -1,4 +1,24 @@
-# NEXUS-X · Hardware Bridge BLE v2 — piloto bidireccional
+# NEXUS-X · Hardware Bridge BLE v3 — panel ambiental
+
+El panel web de [GitHub Pages](https://miqueas80.github.io/Nexus-esp32-prueba/) ahora muestra las lecturas del sensor BMP280/BME280 a través del Bluetooth BLE del ESP32.
+
+## Probar desde el celular
+
+1. Alimentar la ESP32 con el firmware v3 ya cargado.
+2. Abrir Chrome para Android en https://miqueas80.github.io/Nexus-esp32-prueba/
+3. Recargar la página y tocar **Conectar ESP32**.
+4. Elegir **NEXUS-ESP32**. Se consulta el modelo de sensor y sus lecturas.
+5. Se actualiza al conectar, cada 15 segundos mientras la página está visible y con **Actualizar mediciones**.
+
+La interfaz reconoce los comandos SENSOR, TEMP, PRESS y HUM, y los mensajes SENSOR:BME280, SENSOR:BMP280, TEMP:valor, PRES:valor y HUM:valor. Humedad solo está disponible con BME280.
+
+Se preservan PING, DEMO_ON, DEMO_OFF, STATUS y los UUID del firmware v2. Si se conecta un firmware v2, funcionan los controles demo, pero la lectura del sensor aparece como no disponible.
+
+**Seguridad:** el sensor usa alimentación 3,3 V e I2C en GPIO21 SDA/GPIO22 SCL. Este piloto no controla relés ni salidas físicas. No conectar módulos MQ de 5 V directamente a GPIO de 3,3 V.
+
+---
+
+## Documentación histórica del piloto BLE v2
 
 **Objetivo alcanzable sin cables Dupont:** enviar `PING`, `DEMO_ON`, `DEMO_OFF` y `STATUS` desde Chrome para Android a la ESP32, y recibir confirmaciones reales de vuelta.
 
