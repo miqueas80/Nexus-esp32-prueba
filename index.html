@@ -62,8 +62,8 @@
     .lamp .subtitle{font-size:.88rem;color:#abc7d8;line-height:1.5;margin:8px 0 13px}
     .lampButtons{display:grid;grid-template-columns:1fr 1fr;gap:10px}
     .lampButtons button{border:1px solid #397d9a;background:#17435e;color:#e8fbff}
-    #ledOn{background:#42d4ba;color:#072b31;border:0}
-    #ledStatus{width:100%;margin-top:10px;background:#12334a;color:#cceafa;border:1px solid #335e77}
+    #ledOn,#led2On{background:#42d4ba;color:#072b31;border:0}
+    #ledStatus,#led2Status{width:100%;margin-top:10px;background:#12334a;color:#cceafa;border:1px solid #335e77}
     @media(max-width:360px){.buttons{grid-template-columns:1fr}}
   </style>
 </head>
@@ -71,7 +71,7 @@
 <main>
   <div class="eyebrow">NEXUS-X / Hardware Bridge</div>
   <h1>ESP32 · Control bidireccional</h1>
-  <p class="lead">Leé temperatura, presión y humedad por Bluetooth y controlá un LED de baja tensión. La demostración virtual sigue disponible.</p>
+  <p class="lead">Leé temperatura, presión y humedad por Bluetooth y controlá dos LEDs independientemente desde tu celular.</p>
   <section class="panel" aria-label="Panel ESP32">
     <div class="top"><span class="label">Dispositivo</span><span class="pill" id="state" role="status">Desconectado</span></div>
     <div class="name" id="deviceName">NEXUS-ESP32</div>
@@ -92,15 +92,25 @@
       <button id="environmentRefresh" type="button" disabled>Actualizar mediciones</button>
       <p id="lastUpdated">Todavía no hay mediciones.</p>
     </section>
-    <section class="lamp" aria-label="Control físico del LED">
-      <h2>💡 LED físico · GPIO18</h2>
+    <section class="lamp" aria-label="Control físico del LED 1">
+      <h2>💡 LED 1 · GPIO18</h2>
       <p class="subtitle" id="ledInfo">Disponible con firmware v4. El LED debe tener una resistencia de 330 Ω en serie.</p>
-      <div class="signal off" id="ledState" role="status">Estado del LED: sin conexión</div>
+      <div class="signal off" id="ledState" role="status">LED 1: sin conexión</div>
       <div class="lampButtons">
-        <button id="ledOn" type="button" disabled>Encender LED</button>
-        <button id="ledOff" type="button" disabled>Apagar LED</button>
+        <button id="ledOn" type="button" disabled>Encender LED 1</button>
+        <button id="ledOff" type="button" disabled>Apagar LED 1</button>
       </div>
-      <button id="ledStatus" type="button" disabled>Consultar LED</button>
+      <button id="ledStatus" type="button" disabled>Consultar LED 1</button>
+    </section>
+    <section class="lamp" aria-label="Control físico del LED 2">
+      <h2>💡 LED 2 · GPIO19</h2>
+      <p class="subtitle" id="led2Info">Requiere firmware v5 y otra resistencia de 330 Ω.</p>
+      <div class="signal off" id="led2State" role="status">LED 2: sin conexión</div>
+      <div class="lampButtons">
+        <button id="led2On" type="button" disabled>Encender LED 2</button>
+        <button id="led2Off" type="button" disabled>Apagar LED 2</button>
+      </div>
+      <button id="led2Status" type="button" disabled>Consultar LED 2</button>
     </section>
     <section class="controls" aria-label="Comandos de demostración">
       <h2>Comandos a la ESP32</h2>
@@ -117,9 +127,9 @@
     <div class="diag" aria-live="polite"><strong>Diagnóstico:</strong> <span id="diag">Comprobando navegador…</span></div>
   </section>
   <p class="hint">Abrí esta página desde <strong>Chrome para Android</strong> mediante <strong>HTTPS</strong>, activá Bluetooth, y desconectá primero nRF Connect si sigue conectado. No hace falta emparejarlo en los ajustes del celular.</p>
-  <p class="hint"><strong>Alcance:</strong> el firmware v4 controla únicamente un LED de baja tensión en GPIO18 con resistencia de 330 Ω. Conserva la lectura BME280 y la demostración virtual. No conecta relés ni cargas de red.</p>
-  <p class="hint">Para habilitar los botones físicos del LED, <a href="https://github.com/miqueas80/Nexus-esp32-prueba/blob/main/firmware/NEXUS_ESP32_v4_LED/NEXUS_ESP32_v4_LED.ino">cargá el firmware v4 para Arduino IDE</a> por USB. El firmware v3 sigue midiendo el ambiente, pero no puede accionar el LED.</p>
-  <footer>Laboratorio de prueba · No modifica NEXUS-X en producción · Bluetooth local · Solo LED GPIO18 de baja tensión</footer>
+  <p class="hint"><strong>Alcance:</strong> el firmware v5 controla dos LEDs de baja tensión en GPIO18 y GPIO19. Cada LED necesita su propia resistencia de 330 Ω. Conserva las lecturas BME280 y la demo virtual. No conecta relés ni cargas de red.</p>
+  <p class="hint">Para habilitar el control individual de ambos LEDs, <a href="https://github.com/miqueas80/Nexus-esp32-prueba/blob/main/firmware/NEXUS_ESP32_v5_Dos_LED/NEXUS_ESP32_v5_Dos_LED.ino">cargá el firmware v5 desde Arduino IDE</a>. La versión v4 sigue manejando solo el LED 1.</p>
+  <footer>Laboratorio de prueba · No modifica NEXUS-X en producción · Bluetooth local · Solo LEDs GPIO18/GPIO19 de baja tensión</footer>
 </main>
 <script>
 (() => {
@@ -140,6 +150,7 @@
   let telemetrySupported = null;
   let sensorDetected = false;
   let ledSupported = null;
+  let led2Supported = null;
 
   const setMessage = (value) => { $('message').textContent = value; };
   const setDiag = (value) => { $('diag').textContent = value; };
@@ -156,6 +167,8 @@
     $('environmentRefresh').disabled = isBusy || !online || !commandChar || telemetrySupported === false;
     for (const id of ['ledOn','ledOff','ledStatus'])
       $(id).disabled = isBusy || !online || !commandChar || ledSupported !== true;
+    for (const id of ['led2On','led2Off','led2Status'])
+      $(id).disabled = isBusy || !online || !commandChar || led2Supported !== true;
   }
 
   function resetEnvironment() {
@@ -198,18 +211,28 @@
   function updateLed(value) {
     if (value === 'ACK:LED_ON' || value === 'LED:ON') {
       $('ledState').className = 'signal on';
-      $('ledState').textContent = 'Estado reportado: ENCENDIDO';
+      $('ledState').textContent = 'LED 1: ENCENDIDO';
     } else if (value === 'ACK:LED_OFF' || value === 'LED:OFF') {
       $('ledState').className = 'signal off';
-      $('ledState').textContent = 'Estado reportado: APAGADO';
+      $('ledState').textContent = 'LED 1: APAGADO';
+    } else if (value === 'ACK:LED2_ON' || value === 'LED2:ON') {
+      $('led2State').className = 'signal on';
+      $('led2State').textContent = 'LED 2: ENCENDIDO';
+    } else if (value === 'ACK:LED2_OFF' || value === 'LED2:OFF') {
+      $('led2State').className = 'signal off';
+      $('led2State').textContent = 'LED 2: APAGADO';
     }
   }
 
   function resetLed() {
     ledSupported = null;
+    led2Supported = null;
     $('ledState').className = 'signal off';
-    $('ledState').textContent = 'Estado del LED: sin conexión';
-    $('ledInfo').textContent = 'Disponible con firmware v4. El LED debe tener una resistencia de 330 Ω en serie.';
+    $('ledState').textContent = 'LED 1: sin conexión';
+    $('ledInfo').textContent = 'Disponible con firmware v4 o v5. Resistencia de 330 Ω en serie.';
+    $('led2State').className = 'signal off';
+    $('led2State').textContent = 'LED 2: sin conexión';
+    $('led2Info').textContent = 'Requiere firmware v5 y otra resistencia de 330 Ω.';
   }
 
   function showValue(value) {
@@ -228,7 +251,7 @@
       state.textContent = 'Interruptor virtual: esperando consulta';
     }
     if (value === 'PONG') setMessage('Respuesta recibida: la ESP32 contestó al PING.');
-    else if (value?.startsWith('ACK:LED_')) setMessage('Orden del LED confirmada por el firmware del ESP32.');
+    else if (value?.startsWith('ACK:LED_') || value?.startsWith('ACK:LED2_')) setMessage('Orden del LED confirmada por el firmware del ESP32.');
     else if (value?.startsWith('ACK:')) setMessage('Orden de demostración confirmada por la ESP32.');
     else if (value?.startsWith('STATE:')) setMessage('Estado leído directamente desde la ESP32.');
     else if (value === 'NEXUS-X LISTO') setMessage('Conexión de lectura confirmada.');
@@ -302,14 +325,26 @@
   }
 
   async function detectLedFirmware() {
-    const result = await issueCommand('LED_STATUS');
-    if (result === 'LED:ON' || result === 'LED:OFF') {
-      ledSupported = true;
-      $('ledInfo').textContent = 'Firmware v4 detectado. Control de LED de baja tensión en GPIO18.';
+    const first = await issueCommand('LED_STATUS');
+    ledSupported = first === 'LED:ON' || first === 'LED:OFF';
+    if (ledSupported) {
+      $('ledInfo').textContent = 'LED 1 listo para recibir órdenes individuales.';
+      const second = await issueCommand('LED2_STATUS');
+      led2Supported = second === 'LED2:ON' || second === 'LED2:OFF';
+      if (led2Supported) {
+        $('led2Info').textContent = 'LED 2 listo para recibir órdenes individuales.';
+        $('firmware').textContent = 'Firmware v5: control individual de 2 LEDs y mediciones disponibles.';
+      } else {
+        $('led2State').textContent = 'LED 2: firmware v5 necesario';
+        $('led2Info').textContent = 'Firmware v4 detectado. Instalá v5 para controlar el segundo LED.';
+        $('firmware').textContent = 'Firmware v4: LED 1 y mediciones disponibles.';
+      }
     } else {
-      ledSupported = false;
-      $('ledState').textContent = 'Control no disponible';
-      $('ledInfo').textContent = 'Con el firmware v3, los botones del LED están desactivados. Instalá v4.';
+      led2Supported = false;
+      $('ledState').textContent = 'LED 1: firmware v4/v5 necesario';
+      $('led2State').textContent = 'LED 2: firmware v5 necesario';
+      $('ledInfo').textContent = 'Actualizá el firmware para controlar los LEDs.';
+      $('led2Info').textContent = 'Actualizá a v5 para controlar el segundo LED.';
     }
     render();
   }
@@ -426,6 +461,15 @@
   });
   $('ledStatus').addEventListener('click', () => {
     if (ledSupported) sendCommand('LED_STATUS');
+  });
+  $('led2On').addEventListener('click', () => {
+    if (led2Supported) sendCommand('LED2_ON');
+  });
+  $('led2Off').addEventListener('click', () => {
+    if (led2Supported) sendCommand('LED2_OFF');
+  });
+  $('led2Status').addEventListener('click', () => {
+    if (led2Supported) sendCommand('LED2_STATUS');
   });
   setInterval(() => {
     if (!document.hidden && connected() && sensorDetected && !isBusy)
