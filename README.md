@@ -1,3 +1,32 @@
+# NEXUS-X Hardware Bridge v5 — 2 LEDs independientes
+
+**Panel:** https://miqueas80.github.io/Nexus-esp32-prueba/
+
+**Firmware v5:** [Abrir sketch NEXUS_ESP32_v5_Dos_LED.ino](firmware/NEXUS_ESP32_v5_Dos_LED/NEXUS_ESP32_v5_Dos_LED.ino)
+
+El panel permite encender o apagar cada LED por separado. Se conserva la lectura BME280 (temperatura, presión, humedad), la conexión BLE y la demostración.
+
+| Elemento | GPIO | Comandos |
+| --- | --- | --- |
+| LED 1 | 18 | `LED_ON`, `LED_OFF`, `LED_STATUS` |
+| LED 2 | 19 | `LED2_ON`, `LED2_OFF`, `LED2_STATUS` |
+
+Cada LED tiene **su propia resistencia de 330 ohm en serie** y el cátodo (-) a GND común. No conectes LEDs sin resistencia. El firmware deja ambos apagados al inicio y ante desconexión BLE.
+
+## Cómo probar
+
+1. **Desconectá el USB.** Verificá el GND del segundo LED: patita corta del LED 2 en la columna 34 (grupo de `c34`) y jumper `c34` → `i20` si sigue libre y es el grupo de GND compartido (no muevas el BME280). Confirmá que no haya puentes accidentales.
+2. En Arduino IDE guardá el sketch v4 anterior y abrí el archivo **v5** desde GitHub, botón **Raw**; copiá el código completo a un sketch nuevo.
+3. Con la placa **ESP32 Dev Module**, las bibliotecas de Adafruit BMP280/BME280 instaladas y el puerto USB correcto, presioná **Verificar** y, solo si compila y el circuito está correctamente conectado, **Subir**.
+4. Recargá el panel web en **Chrome Android** y conectate a **NEXUS-ESP32**. Probá encender LED 1 y apagar LED 2, y viceversa.
+5. El panel deshabilita el control del LED 2 si detecta firmware v4 antiguo. La carga de v5 por USB es obligatoria para usar ambos.
+
+Este piloto controla **solo LEDs de baja tensión**, nunca lámparas de red ni relés directamente. Cambiar la página en GitHub Pages no actualiza automáticamente el firmware del microcontrolador.
+
+---
+
+## Historial — v4, v3 y v2
+
 # NEXUS-X Hardware Bridge v4 — Control del LED y BME280
 
 La web de prueba se actualizó para manejar un LED físico de 3,3 V en GPIO18 y mantener las mediciones ambientales BME280 por Bluetooth.
