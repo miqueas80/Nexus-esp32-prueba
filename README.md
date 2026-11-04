@@ -1,3 +1,33 @@
+# NEXUS-X Hardware Bridge v4 — Control del LED y BME280
+
+La web de prueba se actualizó para manejar un LED físico de 3,3 V en GPIO18 y mantener las mediciones ambientales BME280 por Bluetooth.
+
+**Panel web:** https://miqueas80.github.io/Nexus-esp32-prueba/
+
+**Firmware nuevo:** [NEXUS_ESP32_v4_LED.ino](firmware/NEXUS_ESP32_v4_LED/NEXUS_ESP32_v4_LED.ino)
+
+## Instalación
+
+1. En Arduino IDE, guardá una copia del programa v3 que ya funciona.
+2. Abrí el firmware v4 desde GitHub, pulsá **Raw** y copiá el código en un sketch nuevo.
+3. Conservá la placa **ESP32 Dev Module**, el puerto USB correcto y las bibliotecas Adafruit BMP280 y BME280.
+4. Hacé **Verificar (✓)**. Solo si compila correctamente y el LED está conectado con una resistencia de **330 Ω**, hacé **Subir (→)**.
+5. Abrí Chrome Android, recargá la web, conectá **NEXUS-ESP32**, tocá **Consultar LED** y probá el encendido/apagado.
+
+## Qué mantiene y agrega
+
+- Mantiene el nombre Bluetooth y los UUID originales, PING, DEMO_ON, DEMO_OFF, STATUS y SENSOR/TEMP/PRESS/HUM.
+- Agrega LED_ON, LED_OFF y LED_STATUS para LED de baja tensión en GPIO18.
+- El LED inicia apagado y vuelve a apagarse al desconectar BLE.
+- Los botones LED solo se habilitan cuando detectan firmware v4; el firmware v3 sigue compatible para las mediciones, pero no puede controlar el LED.
+- No controla relés ni tensión de red. La placa debe seguir alimentada por USB o una fuente adecuada.
+
+**Importante:** GitHub Pages actualiza la web, pero **no carga firmware al ESP32**. Hace falta subir v4 desde Arduino IDE.
+
+---
+
+## Historial de la versión v3
+
 # NEXUS-X · Hardware Bridge BLE v3 — panel ambiental
 
 El panel web de [GitHub Pages](https://miqueas80.github.io/Nexus-esp32-prueba/) ahora muestra las lecturas del sensor BMP280/BME280 a través del Bluetooth BLE del ESP32.
